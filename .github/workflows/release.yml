@@ -55,10 +55,21 @@ jobs:
           tar -czf telemt-panel-x86_64-linux-gnu.tar.gz telemt-panel-x86_64-linux
           tar -czf telemt-panel-aarch64-linux-gnu.tar.gz telemt-panel-aarch64-linux
 
+          # Bridge artifacts: musl-named copies of the same static (CGO_ENABLED=0)
+          # binary. Lets already-deployed installs whose libc detection resolves to
+          # "musl" (glibc < 2.32 / Alpine / missing ldd) self-update via the UI on
+          # their OLD binary, which only looks for a "musl" asset. New binaries use
+          # the arch-keyed matcher and ignore the libc token, so these copies can be
+          # dropped a release or two after the matcher fix has propagated.
+          cp telemt-panel-x86_64-linux-gnu.tar.gz telemt-panel-x86_64-linux-musl.tar.gz
+          cp telemt-panel-aarch64-linux-gnu.tar.gz telemt-panel-aarch64-linux-musl.tar.gz
+
       - name: Generate checksums
         run: |
           sha256sum telemt-panel-x86_64-linux-gnu.tar.gz > telemt-panel-x86_64-linux-gnu.sha256
           sha256sum telemt-panel-aarch64-linux-gnu.tar.gz > telemt-panel-aarch64-linux-gnu.sha256
+          sha256sum telemt-panel-x86_64-linux-musl.tar.gz > telemt-panel-x86_64-linux-musl.sha256
+          sha256sum telemt-panel-aarch64-linux-musl.tar.gz > telemt-panel-aarch64-linux-musl.sha256
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -69,6 +80,10 @@ jobs:
             telemt-panel-x86_64-linux-gnu.sha256
             telemt-panel-aarch64-linux-gnu.tar.gz
             telemt-panel-aarch64-linux-gnu.sha256
+            telemt-panel-x86_64-linux-musl.tar.gz
+            telemt-panel-x86_64-linux-musl.sha256
+            telemt-panel-aarch64-linux-musl.tar.gz
+            telemt-panel-aarch64-linux-musl.sha256
 
   docker:
     runs-on: ubuntu-latest

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/telemt/telemt-panel/internal/github"
 	"github.com/telemt/telemt-panel/internal/sysutil"
 )
 
@@ -75,6 +76,51 @@ func TestNewCleansRecoveredStagedBackup(t *testing.T) {
 	}
 	if _, err := os.Stat(backupPath); !os.IsNotExist(err) {
 		t.Fatalf("expected recovered backup to be removed, stat err=%v", err)
+	}
+}
+
+// The panel binary is built static (CGO_ENABLED=0), so the libc token in the
+// asset name is cosmetic and releases only ship the "gnu" variant. The matcher
+// must still resolve the asset even when variant detection falls back to "musl"
+// (older glibc, Alpine, missing ldd) — otherwise every release is filtered out
+// and the UI shows "no available versions".
+func TestAssetMatcherFallsBackToPublishedVariant(t *testing.T) {
+	old := detectedVariant
+	t.Cleanup(func() { detectedVariant = old })
+	detectedVariant = "musl" // broken case: detection resolves to a variant that isn't published
+
+	binName := "telemt-panel-" + archString() + "-linux-gnu.tar.gz"
+	sumName := "telemt-panel-" + archString() + "-linux-gnu.sha256"
+	assets := []github.GitHubAsset{
+		{Name: sumName},
+		{Name: binName},
+	}
+
+	bin, sum := NewAssetMatcher()(assets)
+	if bin == nil || bin.Name != binName {
+		t.Fatalf("expected binary %q, got %v", binName, bin)
+	}
+	if sum == nil || sum.Name != sumName {
+		t.Fatalf("expected checksum %q, got %v", sumName, sum)
+	}
+}
+
+// When the exact detected variant IS published, it must be preferred over other variants.
+func TestAssetMatcherPrefersExactVariant(t *testing.T) {
+	old := detectedVariant
+	t.Cleanup(func() { detectedVariant = old })
+	detectedVariant = "gnu"
+
+	gnuName := "telemt-panel-" + archString() + "-linux-gnu.tar.gz"
+	muslName := "telemt-panel-" + archString() + "-linux-musl.tar.gz"
+	assets := []github.GitHubAsset{
+		{Name: muslName},
+		{Name: gnuName},
+	}
+
+	bin, _ := NewAssetMatcher()(assets)
+	if bin == nil || bin.Name != gnuName {
+		t.Fatalf("expected preferred binary %q, got %v", gnuName, bin)
 	}
 }
 
