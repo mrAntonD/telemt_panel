@@ -21,20 +21,17 @@
     "logout": "Logout"
   },
   "telegram": {
-    "botNotFound": "bot.py not found",
     "notConfigured": "Not configured",
     "running": "Running",
-    "runningPid": "Running (PID {{pid}})",
     "errorStatus": "Error",
     "stopped": "Stopped",
     "start": "Start",
     "stop": "Stop",
     "startBot": "Start bot",
     "stopBot": "Stop bot",
-    "botNotFoundPath": "bot.py not found at <config_dir>/bot/bot.py",
     "requiresToken": "Enter token and admin IDs first",
     "settingsSaved": "Settings saved. Bot will restart automatically.",
-    "botProcessError": "Bot process error:",
+    "botProcessError": "Bot error:",
     "loadError": "Failed to load configuration",
     "saveError": "Failed to save",
     "toggleError": "Failed to control bot",
@@ -50,12 +47,8 @@
     "maxUniqueIpsLabel": "Max unique IPs per client",
     "maxUniqueIpsHint": "Bot notifies admin when this limit is exceeded",
     "processLabel": "Process:",
-    "processRunning": "running (PID {{pid}})",
     "processStopped": "stopped",
-    "botPyFound": "found",
-    "botPyNotFound": "not found",
-    "botPyMissingHint": "bot.py not found — restart the panel to extract the file from the binary.",
-    "autoStartHint": "Python dependencies are installed automatically on first bot start. If token and admin IDs are set, the bot starts automatically on next panel launch. Bot restarts when settings are saved."
+    "autoStartHint": "The bot is built into the panel — no Python required. If token and admin IDs are set, the bot starts automatically on panel launch. Bot restarts when settings are saved."
   },
   "update": {
     "checking": "Checking",

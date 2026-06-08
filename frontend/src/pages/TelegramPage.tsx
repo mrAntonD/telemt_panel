@@ -14,25 +14,14 @@ interface TelegramConfig {
 interface BotStatus {
   running: boolean;
   enabled: boolean;
-  pid: number;
   last_error: string;
   configured: boolean;
-  script_found: boolean;
 }
 
 function StatusBadge({ status }: { status: BotStatus | null }) {
   const { t } = useTranslation();
 
   if (!status) return null;
-
-  if (!status.script_found) {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-500/15 text-yellow-500">
-        <AlertCircle className="w-3.5 h-3.5" />
-        {t('telegram.botNotFound')}
-      </span>
-    );
-  }
 
   if (!status.configured) {
     return (
@@ -47,7 +36,7 @@ function StatusBadge({ status }: { status: BotStatus | null }) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-500/15 text-green-500">
         <CheckCircle2 className="w-3.5 h-3.5" />
-        {status.pid ? t('telegram.runningPid', { pid: status.pid }) : t('telegram.running')}
+        {t('telegram.running')}
       </span>
     );
   }
@@ -115,7 +104,7 @@ export function TelegramPage() {
       const data = await panelApi.get<BotStatus>('/telegram/status');
       setStatus(data);
     } catch {
-      // silent — don't interrupt the user
+      // silent
     }
   };
 
@@ -189,14 +178,11 @@ export function TelegramPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Start / Stop toggle */}
           <button
             onClick={handleToggle}
-            disabled={toggling || !isConfigured || !status?.script_found}
+            disabled={toggling || !isConfigured}
             title={
-              !status?.script_found
-                ? t('telegram.botNotFoundPath')
-                : !isConfigured
+              !isConfigured
                 ? t('telegram.requiresToken')
                 : botIsOn
                 ? t('telegram.stopBot')
@@ -240,7 +226,6 @@ export function TelegramPage() {
             </div>
           )}
 
-          {/* Error details from process */}
           {status?.last_error && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm">
               <p className="font-medium mb-1">{t('telegram.botProcessError')}</p>
@@ -334,33 +319,18 @@ export function TelegramPage() {
             </div>
           </div>
 
-          {/* Bot status card */}
+          {/* Status card */}
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="px-4 py-3 bg-surface">
               <span className="font-semibold text-text-primary">{t('telegram.statusSection')}</span>
             </div>
             <div className="p-4 bg-background space-y-3">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="text-text-secondary">{t('telegram.processLabel')}</span>{' '}
-                  <span className={status?.running ? 'text-green-500' : 'text-text-secondary'}>
-                    {status?.running
-                      ? t('telegram.processRunning', { pid: status.pid })
-                      : t('telegram.processStopped')}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-text-secondary">bot.py:</span>{' '}
-                  <span className={status?.script_found ? 'text-green-500' : 'text-yellow-500'}>
-                    {status?.script_found ? t('telegram.botPyFound') : t('telegram.botPyNotFound')}
-                  </span>
-                </div>
+              <div className="text-sm">
+                <span className="text-text-secondary">{t('telegram.processLabel')}</span>{' '}
+                <span className={status?.running ? 'text-green-500' : 'text-text-secondary'}>
+                  {status?.running ? t('telegram.running') : t('telegram.processStopped')}
+                </span>
               </div>
-              {!status?.script_found && (
-                <p className="text-xs text-yellow-500">
-                  {t('telegram.botPyMissingHint')}
-                </p>
-              )}
               <p className="text-xs text-text-secondary">
                 {t('telegram.autoStartHint')}
               </p>

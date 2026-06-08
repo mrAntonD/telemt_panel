@@ -113,8 +113,3 @@ session_ttl = "24h"
 # Для получения User ID используйте @userinfobot или команду '/id' в боте.
 # admin_ids = []
 
-# Path to bot.py. Defaults to <config_dir>/bot/bot.py (i.e. next to this file).
-# bot_script = "/etc/telemt-panel/bot/bot.py"
-
-# Python interpreter. Defaults to auto-detect (python3, then python).
-# python_path = "python3"

@@ -46,14 +46,13 @@ The panel UI supports **English and Russian** languages. Switch via the globe bu
 - **GeoIP** — IP geolocation via MaxMind GeoLite2
 - **WebSocket** — real-time data updates without page reload
 - **Base Path** — reverse proxy subpath support
-- **Telegram Bot** — built-in Python bot manager: auto-start on panel launch, Start/Stop button with live status and PID, token and admin IDs configured via UI and saved to config.toml
+- **Telegram Bot** — built-in Go bot: auto-start on panel launch, Start/Stop button with live status, token and admin IDs configured via UI and saved to config.toml
 - **i18n** — English / Russian UI switcher (saved to localStorage)
 
 ## Requirements
 
 - Linux (x86_64 or aarch64), any distribution (Debian, Ubuntu, Alpine, CentOS, etc.)
 - A running Telemt server with an accessible API
-- **For Telegram bot (bare metal):** Python 3.8+ with pip. Python is already included in the Docker image.
 
 To build from source:
 - Go 1.24+
@@ -118,7 +117,7 @@ The panel will be available at `http://your_server:8080`.
 
 ## Docker
 
-The panel ships with a ready-to-use `docker-compose.yml` that runs telemt and telemt-panel together. Python and all Telegram bot dependencies are already included in the image.
+The panel ships with a ready-to-use `docker-compose.yml` that runs telemt and telemt-panel together. The Telegram bot is built into the panel binary — no Python or external dependencies needed.
 
 ### File structure
 
@@ -273,14 +272,12 @@ Full configuration example: [`config.example.toml`](config.example.toml).
 | `[telegram]` | `enabled` | Auto-start bot on panel launch | `false` |
 | `[telegram]` | `bot_token` | Telegram bot token (get from `@botfather`) | — |
 | `[telegram]` | `admin_ids` | Array of Telegram User IDs for bot admins | — |
-| `[telegram]` | `bot_script` | Path to `bot.py` | `<data_dir>/bot/bot.py` (extracted from binary) |
-| `[telegram]` | `python_path` | Python interpreter path | auto (`python3`) |
 | `[telegram]` | `default_max_tcp_conns` | Default TCP session limit per new client | `50` |
 | `[telegram]` | `default_max_unique_ips` | Default unique IP limit per client (alerts admin when exceeded) | `5` |
 
 ## Telegram Bot
 
-The Python bot is embedded in the panel binary and started as a child process — no manual file copying needed.
+The bot is built into the panel binary as a native goroutine — no Python or external dependencies needed.
 
 ### Bot capabilities
 
@@ -304,9 +301,7 @@ Open the **Telegram Bot** section in the panel sidebar:
 
 Settings are saved to the `[telegram]` section of `config.toml`. The bot starts automatically on next panel launch.
 
-> **Requirements:**
-> - **Docker:** Python and all bot dependencies are included in the image — no extra steps needed.
-> - **Bare metal:** Python 3.8+ with pip required. `bot.py` and `requirements.txt` are extracted from the binary automatically to `<data_dir>/bot/`. Dependencies are installed via `pip` automatically on first bot start.
+> **Note:** The bot is built into the panel binary — no Python or external dependencies required.
 
 ### Proxy domain auto-detection
 
@@ -335,32 +330,10 @@ The bot reads from the Telemt config:
 
 | Action | Description |
 |--------|-------------|
-| **Start** | Starts the bot process, sets `enabled = true` in config.toml |
-| **Stop** | Stops the process, sets `enabled = false` |
+| **Start** | Starts the bot goroutines, sets `enabled = true` in config.toml |
+| **Stop** | Stops the bot, sets `enabled = false` |
 | **Save** | Updates token and admin IDs; restarts the bot if running |
-| Status badge | Updates every 3 s; shows "Running (PID …)", "Stopped" or "Error" |
-
-If the bot crashes, the panel automatically restarts it after 15 seconds.
-
-### bot.py location
-
-On every panel start, `bot.py` and `requirements.txt` are extracted from the binary into `<data_dir>/bot/` (default: `/var/lib/telemt-panel/bot/`). The file is always up to date — it updates together with the panel.
-
-Custom path: `telegram.bot_script = "/path/to/bot.py"` in config.
-
-### Bot environment variables
-
-Override automatically detected values:
-
-| Variable | Description |
-|----------|-------------|
-| `PANEL_CONFIG_PATH` | Path to panel `config.toml` (set automatically when launched via panel) |
-| `BOT_TOKEN` | Bot token (if not set in config.toml) |
-| `ADMIN_IDS` | Comma-separated IDs (if not set in config.toml) |
-| `PROXY_DOMAIN` | Override MTProxy domain (default: from `telemt.config_path`) |
-| `PROXY_PORT` | Override MTProxy port (default: from `telemt.config_path`) |
-| `PROXY_TLS_DOMAIN` | Override TLS domain (default: from `telemt.config_path`) |
-| `API_URL` | Telemt API URL (default: from `telemt.url` in config.toml) |
+| Status badge | Updates every 3 s; shows "Running", "Stopped" or "Error" |
 
 ## Systemd
 

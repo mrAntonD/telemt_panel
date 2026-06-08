@@ -18,7 +18,7 @@ services:
       # Using :ro breaks saving: Docker blocks atomic rename on bind-mounted files,
       # and :ro also blocks the fallback direct write.
       - ./telemt-config/telemt.toml:/etc/telemt/config.toml
-      # Persistent data: bot DB, extracted bot.py — survives container recreation
+      # Persistent data: bot DB — survives container recreation
       - telemt-panel-data:/var/lib/telemt-panel
       # Docker socket — needed for log streaming from telemt container
       - /var/run/docker.sock:/var/run/docker.sock:ro

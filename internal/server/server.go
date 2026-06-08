@@ -5,8 +5,6 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -15,13 +13,13 @@ import (
 
 	"github.com/telemt/telemt-panel/internal/auth"
 	"github.com/telemt/telemt-panel/internal/auto_update"
-	"github.com/telemt/telemt-panel/internal/bot"
 	"github.com/telemt/telemt-panel/internal/config"
 	"github.com/telemt/telemt-panel/internal/geoip"
 	"github.com/telemt/telemt-panel/internal/logs"
 	"github.com/telemt/telemt-panel/internal/panel_updater"
 	"github.com/telemt/telemt-panel/internal/proxy"
 	"github.com/telemt/telemt-panel/internal/spa"
+	"github.com/telemt/telemt-panel/internal/telegram"
 	"github.com/telemt/telemt-panel/internal/telemt_config"
 	"github.com/telemt/telemt-panel/internal/updater"
 	"github.com/telemt/telemt-panel/internal/ws"
@@ -607,21 +605,13 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 
 	// ── Telegram bot ──────────────────────────────────────────────────────────
 
-	// Resolve bot script path: use configured value, or <data_dir>/bot/bot.py (extracted from binary on startup).
-	botScriptPath := s.cfg.Telegram.BotScript
-	if botScriptPath == "" {
-		candidate := filepath.Join(s.cfg.DataDir, "bot", "bot.py")
-		if _, err := os.Stat(candidate); err == nil {
-			botScriptPath = candidate
+	botMgr := telegram.New(s.cfg)
+
+	// Auto-start if enabled and properly configured.
+	if s.cfg.Telegram.Enabled && s.cfg.Telegram.BotToken != "" && len(s.cfg.Telegram.AdminIDs) > 0 {
+		if err := botMgr.Start(); err != nil {
+			log.Printf("WARNING: telegram bot start failed: %v", err)
 		}
-	}
-
-	pythonPath := bot.FindPython(s.cfg.Telegram.PythonPath)
-	botMgr := bot.New(pythonPath, botScriptPath, s.cfg.Path)
-
-	// Auto-start if enabled and properly configured
-	if s.cfg.Telegram.Enabled && s.cfg.Telegram.BotToken != "" && len(s.cfg.Telegram.AdminIDs) > 0 && botScriptPath != "" {
-		botMgr.Start()
 	}
 
 	// isConfigured reports whether token + admin IDs are present.
@@ -642,7 +632,6 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 			"telegram.bot_token":              s.cfg.Telegram.BotToken,
 			"telegram.admin_ids":              ids,
 			"telegram.enabled":                s.cfg.Telegram.Enabled,
-			"telegram.python_path":            s.cfg.Telegram.PythonPath,
 			"telegram.default_max_tcp_conns":  s.cfg.Telegram.DefaultMaxTcpConns,
 			"telegram.default_max_unique_ips": s.cfg.Telegram.DefaultMaxUniqueIps,
 		}
@@ -662,8 +651,6 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 				"bot_token":              s.cfg.Telegram.BotToken,
 				"admin_ids":              adminIDs,
 				"enabled":                s.cfg.Telegram.Enabled,
-				"python_path":            s.cfg.Telegram.PythonPath,
-				"python_resolved":        bot.FindPython(s.cfg.Telegram.PythonPath),
 				"default_max_tcp_conns":  s.cfg.Telegram.DefaultMaxTcpConns,
 				"default_max_unique_ips": s.cfg.Telegram.DefaultMaxUniqueIps,
 			},
@@ -674,7 +661,6 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 		var req struct {
 			BotToken            string  `json:"bot_token"`
 			AdminIDs            []int64 `json:"admin_ids"`
-			PythonPath          string  `json:"python_path"`
 			DefaultMaxTcpConns  int     `json:"default_max_tcp_conns"`
 			DefaultMaxUniqueIps int     `json:"default_max_unique_ips"`
 		}
@@ -685,15 +671,15 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 
 		s.cfg.Telegram.BotToken = req.BotToken
 		s.cfg.Telegram.AdminIDs = req.AdminIDs
-		s.cfg.Telegram.PythonPath = req.PythonPath
 		s.cfg.Telegram.DefaultMaxTcpConns = req.DefaultMaxTcpConns
 		s.cfg.Telegram.DefaultMaxUniqueIps = req.DefaultMaxUniqueIps
 
-		// Stop existing manager, rebuild with updated python path, restart if needed.
+		// Restart bot with new config.
 		botMgr.Stop()
-		botMgr = bot.New(bot.FindPython(req.PythonPath), botScriptPath, s.cfg.Path)
-		if s.cfg.Telegram.Enabled && isConfigured() && botScriptPath != "" {
-			botMgr.Start()
+		if s.cfg.Telegram.Enabled && isConfigured() {
+			if err := botMgr.Start(); err != nil {
+				log.Printf("WARNING: telegram bot restart failed: %v", err)
+			}
 		}
 
 		persistTelegramConfig()
@@ -705,12 +691,10 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 		writeJSON(w, http.StatusOK, jsonResponse{
 			OK: true,
 			Data: map[string]interface{}{
-				"running":      st.Running,
-				"enabled":      s.cfg.Telegram.Enabled,
-				"pid":          st.PID,
-				"last_error":   st.LastError,
-				"configured":   isConfigured(),
-				"script_found": botScriptPath != "",
+				"running":    st.Running,
+				"enabled":    s.cfg.Telegram.Enabled,
+				"last_error": st.LastError,
+				"configured": isConfigured(),
 			},
 		})
 	})))
@@ -720,15 +704,13 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 			writeError(w, http.StatusBadRequest, "not_configured", "bot_token and admin_ids are required")
 			return
 		}
-		if botScriptPath == "" {
-			writeError(w, http.StatusBadRequest, "script_not_found", "bot.py not found; set telegram.bot_script in config")
-			return
-		}
 
 		s.cfg.Telegram.Enabled = true
-		botMgr.Start()
+		if err := botMgr.Start(); err != nil {
+			writeError(w, http.StatusInternalServerError, "start_failed", err.Error())
+			return
+		}
 		persistTelegramConfig()
-
 		writeJSON(w, http.StatusOK, jsonResponse{OK: true, Data: botMgr.Status()})
 	})))
 
@@ -736,7 +718,6 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 		s.cfg.Telegram.Enabled = false
 		botMgr.Stop()
 		persistTelegramConfig()
-
 		writeJSON(w, http.StatusOK, jsonResponse{OK: true, Data: botMgr.Status()})
 	})))
 
