@@ -48,7 +48,7 @@
     "maxUniqueIpsHint": "Bot notifies admin when this limit is exceeded",
     "processLabel": "Process:",
     "processStopped": "stopped",
-    "autoStartHint": "The bot is built into the panel — no Python required. If token and admin IDs are set, the bot starts automatically on panel launch. Bot restarts when settings are saved."
+    "autoStartHint": "If token and admin IDs are set, the bot starts automatically on panel launch. Bot restarts when settings are saved."
   },
   "update": {
     "checking": "Checking",
