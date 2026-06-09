@@ -112,7 +112,6 @@ func (b *Bot) apiCreateUser(name, secret string) (ok bool, realSecret string, co
 		return false, "", false
 	}
 	if _, isConf := resp["_conflict"]; isConf {
-		// Fetch real secret from API
 		users, err := b.apiGetUsers()
 		if err == nil {
 			for _, u := range users {
@@ -121,7 +120,8 @@ func (b *Bot) apiCreateUser(name, secret string) (ok bool, realSecret string, co
 				}
 			}
 		}
-		return true, secret, true
+		// Conflict but real secret is unknown — do not return the generated secret.
+		return false, "", true
 	}
 	if ok, _ := resp["ok"].(bool); ok {
 		return true, secret, false

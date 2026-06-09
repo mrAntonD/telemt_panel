@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 )
 
@@ -71,8 +72,9 @@ func (b *Bot) dbGetUserByName(name string) (tgID int64, secret string) {
 	if db == nil {
 		return 0, ""
 	}
-	db.QueryRow("SELECT tg_id, secret FROM users WHERE proxy_name=?", name).Scan(&tgID, &secret) //nolint:errcheck
-	return tgID, secret
+	var nullTgID sql.NullInt64
+	db.QueryRow("SELECT tg_id, secret FROM users WHERE proxy_name=?", name).Scan(&nullTgID, &secret) //nolint:errcheck
+	return nullTgID.Int64, secret
 }
 
 func (b *Bot) dbIsBanned(tgID int64) bool {
@@ -175,6 +177,27 @@ func (b *Bot) dbAddUser(name string, tgID int64, secret string) {
 		return
 	}
 	db.Exec("INSERT OR REPLACE INTO users VALUES (?,?,?)", name, tgID, secret) //nolint:errcheck
+}
+
+func (b *Bot) dbApproveRequest(name string, tgID int64, secret string) error {
+	b.mu.Lock()
+	db := b.db
+	b.mu.Unlock()
+	if db == nil {
+		return fmt.Errorf("db not initialized")
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec("INSERT OR REPLACE INTO users VALUES (?,?,?)", name, tgID, secret); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM requests WHERE tg_id=?", tgID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (b *Bot) dbUpdateUserTGID(name string, tgID int64) {
@@ -320,13 +343,13 @@ func (b *Bot) dbSyncUsers(users []apiUser) {
 	if err != nil {
 		return
 	}
+	defer rows.Close()
 	existing := make(map[string]string)
 	for rows.Next() {
 		var name, secret string
 		rows.Scan(&name, &secret) //nolint:errcheck
 		existing[name] = secret
 	}
-	rows.Close()
 
 	for _, u := range users {
 		if _, ok := existing[u.name]; !ok {

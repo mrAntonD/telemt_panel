@@ -23,7 +23,9 @@ func (b *Bot) monitorLoop(ctx context.Context) {
 }
 
 func (b *Bot) runMonitorCycle(offlineCount *int) {
+	b.mu.Lock()
 	maxIPs := b.cfg.Telegram.DefaultMaxUniqueIps
+	b.mu.Unlock()
 	if maxIPs <= 0 {
 		maxIPs = 5
 	}
@@ -31,7 +33,7 @@ func (b *Bot) runMonitorCycle(offlineCount *int) {
 	users, err := b.apiGetUsers()
 	if err != nil || len(users) == 0 {
 		*offlineCount++
-		if *offlineCount == 3 {
+		if *offlineCount >= 3 {
 			b.notifyAdmins("🚨 <b>API OFFLINE!</b>")
 		}
 		return
@@ -44,7 +46,7 @@ func (b *Bot) runMonitorCycle(offlineCount *int) {
 
 	now := time.Now().Unix()
 	for _, u := range users {
-		if len(u.activeIPs) >= maxIPs {
+		if len(u.activeIPs) > maxIPs {
 			b.notifyAdmins(fmt.Sprintf("⚠️ <b>ПОДОЗРЕНИЕ: %s</b>\nIP: %d", u.name, len(u.activeIPs)))
 		}
 		for _, ip := range u.activeIPs {

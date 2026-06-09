@@ -31,6 +31,9 @@ func (b *Bot) handleUpdate(update tgbotapi.Update) {
 }
 
 func (b *Bot) handleMessage(msg *tgbotapi.Message) {
+	if msg.From == nil {
+		return
+	}
 	uid := msg.From.ID
 	chatID := msg.Chat.ID
 
@@ -309,10 +312,21 @@ func (b *Bot) adminBlacklist(msg *tgbotapi.Message) {
 }
 
 func (b *Bot) adminBackup(msg *tgbotapi.Message) {
-	dbPath := filepath.Join(b.cfg.DataDir, "bot", "users.db")
-	data, err := os.ReadFile(dbPath)
+	b.mu.Lock()
+	db := b.db
+	b.mu.Unlock()
+	if db == nil {
+		return
+	}
+	tmpPath := filepath.Join(b.cfg.DataDir, "bot", "users_backup_tmp.db")
+	defer os.Remove(tmpPath)
+	if _, err := db.Exec("VACUUM INTO ?", tmpPath); err != nil {
+		b.send(msg.Chat.ID, fmt.Sprintf("❌ Ошибка резервной копии: %v", err))
+		return
+	}
+	data, err := os.ReadFile(tmpPath)
 	if err != nil {
-		b.send(msg.Chat.ID, fmt.Sprintf("❌ Ошибка: %v", err))
+		b.send(msg.Chat.ID, fmt.Sprintf("❌ Ошибка чтения: %v", err))
 		return
 	}
 	b.sendDocument(msg.Chat.ID, "users.db", data, "💾 Резервная копия БД")
@@ -458,6 +472,10 @@ func (b *Bot) handleCallback(cq *tgbotapi.CallbackQuery) {
 	if api == nil {
 		return
 	}
+	if cq.Message == nil {
+		api.Request(tgbotapi.NewCallback(cq.ID, "")) //nolint:errcheck
+		return
+	}
 	api.Request(tgbotapi.NewCallback(cq.ID, "")) //nolint:errcheck
 
 	data := cq.Data
@@ -524,8 +542,10 @@ func (b *Bot) cbProcessRequest(cq *tgbotapi.CallbackQuery) {
 		return
 	}
 
-	b.dbAddUser(proxyName, tgID, realSecret)
-	b.dbDeleteRequest(tgID)
+	if err := b.dbApproveRequest(proxyName, tgID, realSecret); err != nil {
+		b.send(chatID, fmt.Sprintf("❌ Ошибка БД при одобрении: %v", err))
+		return
+	}
 
 	b.editText(chatID, msgID, fmt.Sprintf("✅ Одобрено: <code>%s</code>", proxyName), nil)
 	b.sendMarkup(tgID, b.t(tgID, "req_approved"), b.userKeyboard(tgID))
@@ -635,7 +655,11 @@ func (b *Bot) cbConfirmExec(cq *tgbotapi.CallbackQuery) {
 	isBan := strings.HasPrefix(cq.Data, "ban_yes_")
 	name := cq.Data[8:]
 
-	b.apiDeleteUser(name) //nolint:errcheck
+	if err := b.apiDeleteUser(name); err != nil {
+		b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+			fmt.Sprintf("❌ Ошибка API: прокси <code>%s</code> не удалён. Повторите позже.\n%v", name, err), nil)
+		return
+	}
 
 	if isBan {
 		tgID, _ := b.dbGetUserByName(name)
@@ -736,7 +760,13 @@ func (b *Bot) cbBanTG(cq *tgbotapi.CallbackQuery) {
 	b.dbBanUser(tgID, proxyName, "Бан за спам")
 
 	if proxyName != "Спамер (без прокси)" {
-		b.apiDeleteUser(proxyName) //nolint:errcheck
+		if err := b.apiDeleteUser(proxyName); err != nil {
+			b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+				fmt.Sprintf("🏷 Прокси: <code>%s</code>\n\n⚠️ <b>TG ID %d забанен в БД</b>, но ошибка API: %v\nУдалите прокси вручную.", proxyName, tgID, err),
+				nil,
+			)
+			return
+		}
 		b.dbCleanUser(proxyName)
 		b.send(tgID, b.t(tgID, "access_blocked"))
 	}

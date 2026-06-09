@@ -37,6 +37,7 @@ type fsmState struct {
 type Bot struct {
 	cfg        *config.Config
 	mu         sync.Mutex
+	wg         sync.WaitGroup
 	api        *tgbotapi.BotAPI
 	db         *sql.DB
 	states     map[int64]*fsmState
@@ -68,11 +69,14 @@ func (b *Bot) Start() error {
 		b.mu.Unlock()
 		return nil
 	}
+	b.started = true       // claim the slot before releasing the lock
+	token := b.cfg.Telegram.BotToken // snapshot under lock; UpdateConfig may race otherwise
 	b.mu.Unlock()
 
-	api, err := tgbotapi.NewBotAPI(b.cfg.Telegram.BotToken)
+	api, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		b.mu.Lock()
+		b.started = false
 		b.lastError = err.Error()
 		b.mu.Unlock()
 		return fmt.Errorf("invalid bot token: %w", err)
@@ -80,14 +84,23 @@ func (b *Bot) Start() error {
 
 	dbPath := filepath.Join(b.cfg.DataDir, "bot", "users.db")
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		b.mu.Lock()
+		b.started = false
+		b.mu.Unlock()
 		return fmt.Errorf("create bot dir: %w", err)
 	}
 	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_timeout=5000")
 	if err != nil {
+		b.mu.Lock()
+		b.started = false
+		b.mu.Unlock()
 		return fmt.Errorf("open db: %w", err)
 	}
 	if err := initSchema(db); err != nil {
 		db.Close()
+		b.mu.Lock()
+		b.started = false
+		b.mu.Unlock()
 		return fmt.Errorf("init schema: %w", err)
 	}
 
@@ -97,17 +110,24 @@ func (b *Bot) Start() error {
 	b.api = api
 	b.db = db
 	b.cancel = cancel
-	b.started = true
 	b.lastError = ""
 	b.mu.Unlock()
 
 	b.loadDomainInfo()
 
-	log.Printf("[telegram] bot started, domain=%s port=%d", b.domain, b.port)
+	b.mu.Lock()
+	domain := b.domain
+	port := b.port
+	b.mu.Unlock()
+	log.Printf("[telegram] bot started, domain=%s port=%d", domain, port)
 
 	go b.run(ctx)
 	go b.monitorLoop(ctx)
-	go b.notifyAdmins("🔄 <b>Панель перезапущена.</b> Бот снова в сети.")
+	b.wg.Add(1)
+	go func() {
+		defer b.wg.Done()
+		b.notifyAdmins("🔄 <b>Панель перезапущена.</b> Бот снова в сети.")
+	}()
 	return nil
 }
 
@@ -129,6 +149,7 @@ func (b *Bot) Stop() {
 	if cancel != nil {
 		cancel()
 	}
+	b.wg.Wait() // drain all tracked goroutines before closing DB
 	if db != nil {
 		db.Close()
 	}
@@ -194,7 +215,11 @@ func (b *Bot) run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			go b.handleUpdate(update)
+			b.wg.Add(1)
+			go func(u tgbotapi.Update) {
+				defer b.wg.Done()
+				b.handleUpdate(u)
+			}(update)
 		case <-ctx.Done():
 			api.StopReceivingUpdates()
 			return
@@ -315,8 +340,42 @@ func (b *Bot) sendDocument(chatID int64, filename string, data []byte, caption s
 
 // ── Admin / user helpers ───────────────────────────────────────────────────
 
+// UpdateConfig atomically replaces the Telegram configuration used by bot goroutines.
+func (b *Bot) UpdateConfig(t config.TelegramConfig) {
+	b.mu.Lock()
+	b.cfg.Telegram = t
+	b.mu.Unlock()
+}
+
+// GetTelegramConfig returns a snapshot of the current Telegram configuration.
+func (b *Bot) GetTelegramConfig() config.TelegramConfig {
+	b.mu.Lock()
+	t := b.cfg.Telegram
+	b.mu.Unlock()
+	return t
+}
+
+// IsConfigured reports whether the token and admin IDs are present.
+func (b *Bot) IsConfigured() bool {
+	b.mu.Lock()
+	ok := b.cfg.Telegram.BotToken != "" && len(b.cfg.Telegram.AdminIDs) > 0
+	b.mu.Unlock()
+	return ok
+}
+
+// SetEnabled atomically sets the Enabled flag in the Telegram configuration.
+func (b *Bot) SetEnabled(v bool) {
+	b.mu.Lock()
+	b.cfg.Telegram.Enabled = v
+	b.mu.Unlock()
+}
+
 func (b *Bot) isAdmin(tgID int64) bool {
-	for _, id := range b.cfg.Telegram.AdminIDs {
+	b.mu.Lock()
+	ids := make([]int64, len(b.cfg.Telegram.AdminIDs))
+	copy(ids, b.cfg.Telegram.AdminIDs)
+	b.mu.Unlock()
+	for _, id := range ids {
 		if id == tgID {
 			return true
 		}
@@ -325,7 +384,11 @@ func (b *Bot) isAdmin(tgID int64) bool {
 }
 
 func (b *Bot) notifyAdmins(text string) {
-	for _, id := range b.cfg.Telegram.AdminIDs {
+	b.mu.Lock()
+	ids := make([]int64, len(b.cfg.Telegram.AdminIDs))
+	copy(ids, b.cfg.Telegram.AdminIDs)
+	b.mu.Unlock()
+	for _, id := range ids {
 		b.send(id, text)
 	}
 }
@@ -380,7 +443,10 @@ func (b *Bot) buildProxyLink(secret string) string {
 }
 
 func (b *Bot) maxTCPConns() int {
-	if v := b.cfg.Telegram.DefaultMaxTcpConns; v > 0 {
+	b.mu.Lock()
+	v := b.cfg.Telegram.DefaultMaxTcpConns
+	b.mu.Unlock()
+	if v > 0 {
 		return v
 	}
 	return 50
