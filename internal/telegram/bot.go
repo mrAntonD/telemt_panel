@@ -69,7 +69,7 @@ func (b *Bot) Start() error {
 		b.mu.Unlock()
 		return nil
 	}
-	b.started = true       // claim the slot before releasing the lock
+	b.started = true                 // claim the slot before releasing the lock
 	token := b.cfg.Telegram.BotToken // snapshot under lock; UpdateConfig may race otherwise
 	b.mu.Unlock()
 
