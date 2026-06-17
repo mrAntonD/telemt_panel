@@ -395,6 +395,20 @@ expiration = "2027-12-31T23:59:59Z"        # необяз.; непустое —
 - **Тип:** строка, опционально.
 - **Код:** [`logs.CheckStatus`](../internal/server/server.go) и [`logs.DetectSource`](../internal/logs/detect.go). Если **непустой** — логи в UI идут **только** из Docker по этому имени контейнера; journald по `service_name` для логов **не** используется. Если **пусто** — источник логов определяется как journald для `service_name`.
 
+### `config_edit_mode`
+
+- **Тип:** строка.
+- **По умолчанию:** `api`.
+
+Определяет, как панель редактирует конфиг telemt:
+
+| Значение | Поведение |
+|----------|-----------|
+| `api` | Правка через HTTP API telemt (`GET/PATCH /v1/config`). Файл конфига не затрагивается — безопасно в Docker, shared-volume, non-root окружениях. Ограничения: доступны для редактирования только разделы `general, timeouts, censorship, upstreams, show_link, dc_overrides`; разделы `server`, `network` и пользовательские секреты (`access`) через API недоступны. Ключи можно изменить или добавить, но **не удалить**. |
+| `file` | Прямая правка файла конфига (полный контроль, все разделы). На systemd-хосте требует строки NOPASSWD для `tee` в sudoers — устанавливается скриптом `install.sh`. Использует путь `/etc/telemt/telemt.toml` по умолчанию (или `config_path`, если задан). |
+
+> **Важно для `file`-режима:** sudoers-правило `tee` пинится на конкретный путь конфига (`install.sh` по умолчанию ставит `/etc/telemt/telemt.toml`). Если у вас нестандартный путь конфига telemt, он должен совпадать с `config_path` и с путём в sudoers-правиле, иначе запись через `sudo` в `file`-режиме не пройдёт.
+
 ### `[telemt.auto_update]`
 
 Вложенная таблица типа `AutoUpdateConfig` ([`config.go`](../internal/config/config.go)).

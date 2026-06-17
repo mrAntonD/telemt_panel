@@ -4,8 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -58,42 +58,19 @@ func SaveConfig(configPath, content string) (newHash string, err error) {
 		return "", fmt.Errorf("create backup: %w", err)
 	}
 
-	// Read original file stat to preserve ownership and permissions
-	origStat, err := os.Stat(configPath)
-	if err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("stat config: %w", err)
-	}
-
-	// Atomic write: write to temp file, then rename
-	dir := filepath.Dir(configPath)
-	tmpFile, err := os.CreateTemp(dir, "config-*.tmp")
-	if err != nil {
-		return "", fmt.Errorf("create temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath) // cleanup on error
-
-	if _, err := tmpFile.WriteString(content); err != nil {
-		tmpFile.Close()
-		return "", fmt.Errorf("write temp file: %w", err)
-	}
-	tmpFile.Close()
-
-	// Preserve original file permissions and ownership
-	if origStat != nil {
-		preserveFileOwnership(tmpPath, origStat)
-	}
-
-	// Atomic rename. Falls back to direct overwrite when the destination is a
-	// bind-mounted file (Docker file-mount), where rename fails with EBUSY.
-	if err := os.Rename(tmpPath, configPath); err != nil {
-		data, readErr := os.ReadFile(tmpPath)
-		if readErr != nil {
-			return "", fmt.Errorf("rename temp file: %w", err)
-		}
-		if writeErr := os.WriteFile(configPath, data, 0644); writeErr != nil {
-			return "", fmt.Errorf("rename temp file: %w (fallback write also failed: %v)", err, writeErr)
-		}
+	// Write the new content in place, preserving the existing inode.
+	//
+	// The panel runs unprivileged (systemd User=telemt-panel) and edits
+	// Telemt's config through group membership, not as its owner. A
+	// write-to-temp-then-rename would create a brand-new inode owned by the
+	// panel user; restoring Telemt's ownership afterwards needs root (chown),
+	// which the panel lacks, so the file's owner/group would silently flip and
+	// lock either Telemt or the panel out of the config. Rewriting the
+	// existing inode keeps Telemt's owner, group and permission bits intact and
+	// only requires group-write on the file itself. The backup above is our
+	// safety net for the (now non-atomic) write.
+	if err := writeConfigInPlace(configPath, content); err != nil {
+		return "", fmt.Errorf("write config: %w", err)
 	}
 
 	// Touch the file to trigger Telemt config hot-reload
@@ -236,6 +213,29 @@ func removeIntegerUnderscores(s string) string {
 	return s
 }
 
+// writeConfigInPlace truncates and rewrites the existing config file so its
+// inode — and therefore its owner, group and permission bits — is preserved.
+// If the file does not exist yet it is created fresh (there is nothing to
+// preserve in that case).
+func writeConfigInPlace(path, content string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return os.WriteFile(path, []byte(content), 0o600)
+		}
+		return err
+	}
+	if _, werr := f.WriteString(content); werr != nil {
+		f.Close()
+		return werr
+	}
+	if serr := f.Sync(); serr != nil {
+		f.Close()
+		return serr
+	}
+	return f.Close()
+}
+
 func createBackup(src, dst string) error {
 	srcStat, err := os.Stat(src)
 	if err != nil {
@@ -251,7 +251,12 @@ func createBackup(src, dst string) error {
 	if err := os.WriteFile(dst, data, srcStat.Mode().Perm()); err != nil {
 		return err
 	}
-	preserveFileOwnership(dst, srcStat)
+	// Best-effort: the backup is a panel-owned safety copy. Restoring the
+	// original owner needs root, which the unprivileged panel lacks, so a
+	// failure here is logged but must not fail the save.
+	if err := preserveFileOwnership(dst, srcStat); err != nil {
+		log.Printf("[telemt_config] preserve backup ownership %s: %v", dst, err)
+	}
 	return nil
 }
 
@@ -259,3 +264,7 @@ func calculateHash(data []byte) string {
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])
 }
+
+// Hash returns the sha256 hex digest of content, matching the revision scheme
+// used by ReadConfig and the Telemt API.
+func Hash(content string) string { return calculateHash([]byte(content)) }

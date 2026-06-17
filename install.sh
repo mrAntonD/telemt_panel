@@ -188,6 +188,7 @@ warn_legacy_install() {
 install_sudoers_dropin() {
   _telemt_path="$1"
   _telemt_service="$2"
+  _telemt_config="${3:-/etc/telemt/telemt.toml}"
 
   [ -n "$_telemt_path" ] || _telemt_path=$(detect_telemt)
   [ -n "$_telemt_service" ] || _telemt_service="telemt"
@@ -196,6 +197,7 @@ install_sudoers_dropin() {
   _mv=$(command_path mv)
   _chmod=$(command_path chmod)
   _rm=$(command_path rm)
+  _tee=$(command_path tee)
   _systemctl=$(command_path systemctl)
   _journalctl=$(command_path journalctl)
   _visudo=$(command -v visudo 2>/dev/null || true)
@@ -229,6 +231,7 @@ $SYSTEM_USER ALL=(root) NOPASSWD: $_journalctl -u $_telemt_service -n * --no-pag
 $SYSTEM_USER ALL=(root) NOPASSWD: $_journalctl -u $_telemt_service -n * --since * --no-pager -o short-iso
 $SYSTEM_USER ALL=(root) NOPASSWD: $_journalctl -u $_telemt_service -f --no-pager -o short-iso
 $SYSTEM_USER ALL=(root) NOPASSWD: $_journalctl -u $_telemt_service -f --since * --no-pager -o short-iso
+$SYSTEM_USER ALL=(root) NOPASSWD: $_tee $_telemt_config
 EOF
 
   if [ -n "$_visudo" ]; then
@@ -455,7 +458,7 @@ session_ttl = \"24h\""
     say "Config saved to $CONFIG_FILE"
   fi
 
-  install_sudoers_dropin "$TELEMT_PATH" "$TELEMT_SERVICE"
+  install_sudoers_dropin "$TELEMT_PATH" "$TELEMT_SERVICE" "/etc/telemt/telemt.toml"
 
   # ── Stage 5: Install service ─────────────────────────────────────────────
   say "Installing systemd service..."

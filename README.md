@@ -253,7 +253,8 @@ Full configuration example: [`config.example.toml`](config.example.toml).
 | `[telemt]` | `binary_path` | Path to telemt binary (for updates) | `/bin/telemt` |
 | `[telemt]` | `service_name` | systemd service name | `telemt` |
 | `[telemt]` | `github_repo` | GitHub repository for update checks | `telemt/telemt` |
-| `[telemt]` | `config_path` | Path to Telemt config inside the container (Docker) | — |
+| `[telemt]` | `config_path` | Path to Telemt config (for Docker / non-standard paths) | auto from API |
+| `[telemt]` | `config_edit_mode` | Telemt config edit mode: `api` (via API, Docker-safe, default) or `file` (file edit, requires sudoers tee on systemd) | `api` |
 | `[panel]` | `binary_path` | Path to panel binary (for self-update) | `/usr/local/bin/telemt-panel` |
 | `[panel]` | `service_name` | systemd service name for the panel | `telemt-panel` |
 | `[panel]` | `github_repo` | Panel GitHub repository | `amirotin/telemt_panel` |

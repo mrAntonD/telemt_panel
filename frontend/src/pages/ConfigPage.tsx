@@ -10,6 +10,7 @@ interface ConfigData {
   content: string;
   path: string;
   hash: string;
+  mode: 'api' | 'file';
 }
 
 export function ConfigPage() {
@@ -22,6 +23,8 @@ export function ConfigPage() {
   const [currentContent, setCurrentContent] = useState('');
   const [configPath, setConfigPath] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
+  const [mode, setMode] = useState<'api' | 'file'>('api');
+  const [configHash, setConfigHash] = useState('');
 
   useEffect(() => {
     loadConfig();
@@ -47,6 +50,8 @@ export function ConfigPage() {
       setOriginalContent(data.content);
       setCurrentContent(data.content);
       setConfigPath(data.path);
+      setMode(data.mode ?? 'file');
+      setConfigHash(data.hash ?? '');
       setHasChanges(false);
     } catch (err: any) {
       setError(err.message || 'Failed to load config');
@@ -62,16 +67,24 @@ export function ConfigPage() {
       setSaving(true);
       setError(null);
 
-      await panelApi.post('/telemt/config/save', {
-        content: currentContent,
-        restart,
-      });
+      const result = await panelApi.post<{ new_hash?: string; restart_required?: boolean }>(
+        '/telemt/config/save',
+        { content: currentContent, hash: configHash, restart },
+      );
 
       setOriginalContent(currentContent);
       setHasChanges(false);
+      if (result?.new_hash) setConfigHash(result.new_hash);
 
-      alert(restart ? 'Config saved and Telemt restarting...' : 'Config saved successfully');
+      const restarted = restart || result?.restart_required;
+      alert(restarted ? 'Config saved and Telemt restarting...' : 'Config saved successfully');
     } catch (err: any) {
+      if (err?.code === 'revision_conflict') {
+        setError('Config changed on the server. Reloading…');
+        await loadConfig();
+        alert('The Telemt config changed since you opened it. Your edits were not saved — the latest version was reloaded.');
+        return;
+      }
       setError(err.message || 'Failed to save config');
       alert('Error: ' + (err.message || 'Failed to save config'));
     } finally {
@@ -110,6 +123,11 @@ export function ConfigPage() {
 
   return (
     <div className="flex flex-col h-full">
+      {mode === 'api' && (
+        <div className="px-4 py-2 bg-blue-500/10 border-b border-blue-500/20 text-sm text-blue-600">
+          API mode — main sections only. For full-file access set <code>config_edit_mode = "file"</code>.
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border">
         <div className="flex items-center gap-3">
@@ -182,6 +200,7 @@ export function ConfigPage() {
           <QuickSettingsTab
             content={currentContent}
             onChange={handleContentChange}
+            mode={mode}
           />
         ) : (
           <AdvancedEditorTab

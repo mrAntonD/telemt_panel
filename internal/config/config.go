@@ -78,14 +78,24 @@ type TLSConfig struct {
 }
 
 type TelemtConfig struct {
-	URL           string           `toml:"url"`
-	AuthHeader    string           `toml:"auth_header"`
-	BinaryPath    string           `toml:"binary_path"`
-	ServiceName   string           `toml:"service_name"`
-	GithubRepo    string           `toml:"github_repo"`
-	ConfigPath    string           `toml:"config_path"`
-	ContainerName string           `toml:"container_name"`
-	AutoUpdate    AutoUpdateConfig `toml:"auto_update"`
+	URL            string           `toml:"url"`
+	AuthHeader     string           `toml:"auth_header"`
+	BinaryPath     string           `toml:"binary_path"`
+	ServiceName    string           `toml:"service_name"`
+	GithubRepo     string           `toml:"github_repo"`
+	ConfigPath     string           `toml:"config_path"`
+	ContainerName  string           `toml:"container_name"`
+	ConfigEditMode string           `toml:"config_edit_mode"`
+	AutoUpdate     AutoUpdateConfig `toml:"auto_update"`
+}
+
+// EffectiveConfigEditMode returns the normalized edit mode, defaulting to
+// "api" for empty or unrecognized values.
+func (t TelemtConfig) EffectiveConfigEditMode() string {
+	if strings.ToLower(strings.TrimSpace(t.ConfigEditMode)) == "file" {
+		return "file"
+	}
+	return "api"
 }
 
 type PanelConfig struct {

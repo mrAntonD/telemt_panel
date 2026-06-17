@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 interface QuickSettingsTabProps {
   content: string;
   onChange: (content: string) => void;
+  mode?: 'api' | 'file';
 }
 
 interface FormValues {
@@ -66,7 +67,7 @@ function inlineTablesToSections(toml: string): string {
   return result.join('\n');
 }
 
-export function QuickSettingsTab({ content, onChange }: QuickSettingsTabProps) {
+export function QuickSettingsTab({ content, onChange, mode = 'file' }: QuickSettingsTabProps) {
   const [formValues, setFormValues] = useState<FormValues>({});
   const [parseError, setParseError] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -205,41 +206,43 @@ export function QuickSettingsTab({ content, onChange }: QuickSettingsTabProps) {
   return (
     <div className="p-4 space-y-4 max-w-4xl">
       {/* Server Settings */}
-      <Section
-        title="Server Settings"
-        expanded={expandedSections.server}
-        onToggle={() => toggleSection('server')}
-      >
-        <Field label="Port" description="TCP port to listen on (443 recommended)">
-          <input
-            type="number"
-            value={formValues['server.port'] ?? ''}
-            onChange={(e) => handleFieldChange('server.port', e.target.value ? parseInt(e.target.value) : undefined)}
-            placeholder="443"
-            className="input"
-          />
-        </Field>
+      {mode === 'file' && (
+        <Section
+          title="Server Settings"
+          expanded={expandedSections.server}
+          onToggle={() => toggleSection('server')}
+        >
+          <Field label="Port" description="TCP port to listen on (443 recommended)">
+            <input
+              type="number"
+              value={formValues['server.port'] ?? ''}
+              onChange={(e) => handleFieldChange('server.port', e.target.value ? parseInt(e.target.value) : undefined)}
+              placeholder="443"
+              className="input"
+            />
+          </Field>
 
-        <Field label="IPv4 Listen Address" description="IPv4 bind address">
-          <input
-            type="text"
-            value={formValues['server.listen_addr_ipv4'] ?? ''}
-            onChange={(e) => handleFieldChange('server.listen_addr_ipv4', e.target.value || undefined)}
-            placeholder="0.0.0.0"
-            className="input"
-          />
-        </Field>
+          <Field label="IPv4 Listen Address" description="IPv4 bind address">
+            <input
+              type="text"
+              value={formValues['server.listen_addr_ipv4'] ?? ''}
+              onChange={(e) => handleFieldChange('server.listen_addr_ipv4', e.target.value || undefined)}
+              placeholder="0.0.0.0"
+              className="input"
+            />
+          </Field>
 
-        <Field label="IPv6 Listen Address" description="IPv6 bind address">
-          <input
-            type="text"
-            value={formValues['server.listen_addr_ipv6'] ?? ''}
-            onChange={(e) => handleFieldChange('server.listen_addr_ipv6', e.target.value || undefined)}
-            placeholder="::"
-            className="input"
-          />
-        </Field>
-      </Section>
+          <Field label="IPv6 Listen Address" description="IPv6 bind address">
+            <input
+              type="text"
+              value={formValues['server.listen_addr_ipv6'] ?? ''}
+              onChange={(e) => handleFieldChange('server.listen_addr_ipv6', e.target.value || undefined)}
+              placeholder="::"
+              className="input"
+            />
+          </Field>
+        </Section>
+      )}
 
       {/* Middle Proxy */}
       <Section
@@ -333,41 +336,43 @@ export function QuickSettingsTab({ content, onChange }: QuickSettingsTabProps) {
       </Section>
 
       {/* Network */}
-      <Section
-        title="Network"
-        expanded={expandedSections.network}
-        onToggle={() => toggleSection('network')}
-      >
-        <Field label="IPv4" description="Enable IPv4 for outbound connections">
-          <input
-            type="checkbox"
-            checked={formValues['network.ipv4'] ?? false}
-            onChange={(e) => handleFieldChange('network.ipv4', e.target.checked)}
-            className="checkbox"
-          />
-        </Field>
+      {mode === 'file' && (
+        <Section
+          title="Network"
+          expanded={expandedSections.network}
+          onToggle={() => toggleSection('network')}
+        >
+          <Field label="IPv4" description="Enable IPv4 for outbound connections">
+            <input
+              type="checkbox"
+              checked={formValues['network.ipv4'] ?? false}
+              onChange={(e) => handleFieldChange('network.ipv4', e.target.checked)}
+              className="checkbox"
+            />
+          </Field>
 
-        <Field label="IPv6" description="Enable IPv6 for outbound connections">
-          <input
-            type="checkbox"
-            checked={formValues['network.ipv6'] ?? false}
-            onChange={(e) => handleFieldChange('network.ipv6', e.target.checked)}
-            className="checkbox"
-          />
-        </Field>
+          <Field label="IPv6" description="Enable IPv6 for outbound connections">
+            <input
+              type="checkbox"
+              checked={formValues['network.ipv6'] ?? false}
+              onChange={(e) => handleFieldChange('network.ipv6', e.target.checked)}
+              className="checkbox"
+            />
+          </Field>
 
-        <Field label="Prefer" description="Prefer IPv4 (4) or IPv6 (6)">
-          <select
-            value={formValues['network.prefer'] ?? ''}
-            onChange={(e) => handleFieldChange('network.prefer', e.target.value ? parseInt(e.target.value) : undefined)}
-            className="input"
-          >
-            <option value="">Not set</option>
-            <option value="4">IPv4</option>
-            <option value="6">IPv6</option>
-          </select>
-        </Field>
-      </Section>
+          <Field label="Prefer" description="Prefer IPv4 (4) or IPv6 (6)">
+            <select
+              value={formValues['network.prefer'] ?? ''}
+              onChange={(e) => handleFieldChange('network.prefer', e.target.value ? parseInt(e.target.value) : undefined)}
+              className="input"
+            >
+              <option value="">Not set</option>
+              <option value="4">IPv4</option>
+              <option value="6">IPv6</option>
+            </select>
+          </Field>
+        </Section>
+      )}
 
       {/* Timeouts */}
       <Section

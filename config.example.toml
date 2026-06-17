@@ -29,6 +29,13 @@ auth_header = "your-telemt-api-secret"
 # config_path = "/etc/telemt/config.toml"
 # Docker container name (if Telemt runs in Docker)
 # container_name = "telemt"
+# How the panel edits Telemt's config:
+#   "api"  (default) — via Telemt's HTTP API; never touches the file; works in
+#                      Docker / shared-volume / non-root setups; cannot edit
+#                      server/network or user secrets, and cannot delete keys.
+#   "file"           — edits the raw file directly (full control); on systemd
+#                      hosts needs the NOPASSWD tee sudoers line from install.sh.
+config_edit_mode = "api"
 
 # [telemt.auto_update]
 # enabled = false
