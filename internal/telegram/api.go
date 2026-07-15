@@ -69,6 +69,10 @@ func (b *Bot) apiDo(method, endpoint string, body interface{}) (map[string]inter
 	}
 	if resp.StatusCode == http.StatusConflict {
 		result["_conflict"] = true
+		return result, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("telemt API returned status %d", resp.StatusCode)
 	}
 	return result, nil
 }
@@ -132,6 +136,31 @@ func (b *Bot) apiCreateUser(name, secret string) (ok bool, realSecret string, co
 func (b *Bot) apiDeleteUser(name string) error {
 	_, err := b.apiDo("DELETE", "/users/"+name, nil)
 	return err
+}
+
+func (b *Bot) apiRotateUserSecret(name, oldSecret, newSecret string) (string, error) {
+	resp, err := b.apiDo("PATCH", "/users/"+name, map[string]interface{}{
+		"secret":        newSecret,
+		"max_tcp_conns": b.maxTCPConns(),
+	})
+	if err == nil {
+		if ok, hasOK := resp["ok"].(bool); hasOK && !ok {
+			return "", fmt.Errorf("telemt API returned ok=false")
+		}
+		return newSecret, nil
+	}
+
+	if err := b.apiDeleteUser(name); err != nil {
+		return "", err
+	}
+	ok, realSecret, _ := b.apiCreateUser(name, newSecret)
+	if !ok {
+		if oldSecret != "" {
+			b.apiCreateUser(name, oldSecret) //nolint:errcheck
+		}
+		return "", fmt.Errorf("failed to recreate user after secret rotation")
+	}
+	return realSecret, nil
 }
 
 func formatTraffic(octets int64) string {
